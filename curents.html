@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Ocean Current Simulation</title>
+    <style>
+        #mapContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+        }
+
+        #map,
+        #currentCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mapContainer">
+        <svg id="map" width="800" height="600"></svg>
+        <div id="currentCanvas"></div>
+        <div id="controls">
+            <button onclick="startSimulation()">Start</button>
+            <button onclick="pauseSimulation()">Pause</button>
+            <button onclick="resetSimulation()">Reset</button>
+            <div>
+                <label for="temperatureSlider">Temperature: <span id="temperatureValue">15</span>°C</label>
+                <input type="range" id="temperatureSlider" min="0" max="30" value="15">
+            </div>
+            <div>
+                <label for="windStrengthSlider">Wind Strength: <span id="windStrengthValue">5</span></label>
+                <input type="range" id="windStrengthSlider" min="0" max="10" value="5">
+            </div>
+            <div>
+                <p>Average Speed: <span id="currentSpeed">0</span></p>
+                <p>Particle Count: <span id="particleCount">3000</span></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script src="https://unpkg.com/topojson@3"></script>
+
+    <script>
+        const svg = d3.select("#map");
+        const projection = d3.geoMercator()
+            .scale(130)
+            .translate([400, 300]);
+        const path = d3.geoPath().projection(projection);
+        let land;
+
+        d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(function (world) {
+            land = topojson.feature(world, world.objects.land);
+            svg.append("path")
+                .datum(land)
+                .attr("d", path)
+                .attr("fill", "#d0d0d0")
+                .attr("fill-opacity", 0.7);  // Make land slightly transparent
+
+            new p5(oceanCurrentSketch);
+        });
+
+        function oceanCurrentSketch(sketch) {
+            let particles = [];
+            let flowField;
+            let paused = true;
+            let temperature = 15;
+            let windStrength = 5;
+            let scl = 10;
+            let cols, rows;
+            let zoff = 0;
+
+            sketch.setup = function () {
+                let canvas = sketch.createCanvas(800, 600);
+                canvas.parent('currentCanvas');
+                sketch.clear();
+
+                cols = sketch.floor(sketch.width / scl);
+                rows = sketch.floor(sketch.height / scl);
+                flowField = new Array(cols * rows);
+
+                for (let i = 0; i < 3000; i++) {
+                    particles.push(new Particle());
+                }
+            }
+
+            sketch.draw = function () {
+                if (!paused) {
+                    sketch.clear();
+                    updateFlowField();
+                    updateParticles();
+                    updateInfoPanel();
+                }
+            }
+
+            function updateFlowField() {
+                let yoff = 0;
+                for (let y = 0; y < rows; y++) {
+                    let xoff = 0;
+                    for (let x = 0; x < cols; x++) {
+                        let index = x + y * cols;
+                        let angle = oceanCurrentAngle(x, y) + sketch.noise(xoff, yoff, zoff) * sketch.PI / 16;
+                        let v = p5.Vector.fromAngle(angle);
+                        v.setMag(oceanCurrentStrength(x, y));
+                        flowField[index] = v;
+                        xoff += 0.1;
+                    }
+                    yoff += 0.1;
+                }
+                zoff += 0.01;
+            }
+
+            function oceanCurrentAngle(x, y) {
+                let lat = sketch.map(y, 0, rows, 90, -90);
+                let lon = sketch.map(x, 0, cols, -180, 180);
+
+                // Major currents
+                if (lat > 30 && lat < 60) {
+                    if (lon < -30) return sketch.PI * 0.05;  // North Atlantic Current
+                    if (lon > 120 && lon < 180) return sketch.PI * 0.5;  // Kuroshio Current
+                }
+                if (lat < -30 && lat > -60) return sketch.PI * 1.05;  // Antarctic Circumpolar Current
+                if (lat > -15 && lat < 15) {
+                    if (lon < 0) return sketch.PI * 1.1;  // South Equatorial Current
+                    return sketch.PI * 0.9;  // North Equatorial Current
+                }
+                if (lon < -70 && lon > -100 && lat > 20 && lat < 45) return sketch.PI * 0.25;  // Gulf Stream
+
+                // General circulation patterns
+                if (lat > 0) return sketch.PI * 0.1;  // Northern hemisphere clockwise
+                if (lat < 0) return sketch.PI * 0.9;  // Southern hemisphere counterclockwise
+
+                return sketch.noise(x * 0.05, y * 0.05) * sketch.TWO_PI;  // Random currents elsewhere
+            }
+
+            function oceanCurrentStrength(x, y) {
+                let lat = sketch.map(y, 0, rows, 90, -90);
+                let strength = sketch.map(sketch.abs(lat), 0, 90, 0.8, 0.2);
+
+                strength *= sketch.map(temperature, 0, 30, 0.7, 1.3);
+                strength *= sketch.map(windStrength, 0, 10, 0.7, 1.3);
+                return strength;
+            }
+
+            function updateParticles() {
+                for (let particle of particles) {
+                    particle.follow(flowField);
+                    particle.update();
+                    particle.edges();
+                    particle.show();
+                }
+            }
+
+            function updateInfoPanel() {
+                let avgSpeed = particles.reduce((sum, p) => sum + p.vel.mag(), 0) / particles.length;
+                document.getElementById('currentSpeed').textContent = avgSpeed.toFixed(2);
+                document.getElementById('particleCount').textContent = particles.length;
+            }
+
+            class Particle {
+                constructor() {
+                    this.pos = this.getRandomOceanPosition();
+                    this.vel = sketch.createVector(0, 0);
+                    this.acc = sketch.createVector(0, 0);
+                    this.maxSpeed = 4;
+                    this.prevPos = this.pos.copy();
+                    this.color = sketch.color(0, 100, 255, 100);  // Increased opacity for better visibility
+                }
+
+                getRandomOceanPosition() {
+                    let pos;
+                    do {
+                        pos = sketch.createVector(sketch.random(sketch.width), sketch.random(sketch.height));
+                    } while (this.isOverLand(pos));
+                    return pos;
+                }
+
+                isOverLand(pos) {
+                    let [lon, lat] = projection.invert([pos.x, pos.y]);
+                    return d3.geoContains(land, [lon, lat]);
+                }
+
+                update() {
+                    this.vel.add(this.acc);
+                    this.vel.limit(this.maxSpeed);
+                    let newPos = p5.Vector.add(this.pos, this.vel);
+                    if (!this.isOverLand(newPos)) {
+                        this.pos = newPos;
+                    } else {
+                        this.vel.mult(-1);  // Reverse direction if hitting land
+                    }
+                    this.acc.mult(0);
+                }
+
+                follow(vectors) {
+                    let x = sketch.floor(this.pos.x / scl);
+                    let y = sketch.floor(this.pos.y / scl);
+                    let index = x + y * cols;
+                    let force = vectors[index];
+                    this.applyForce(force);
+                }
+
+                applyForce(force) {
+                    this.acc.add(force);
+                }
+
+                show() {
+                    sketch.stroke(this.color);
+                    sketch.strokeWeight(1);
+                    sketch.line(this.pos.x, this.pos.y, this.prevPos.x, this.prevPos.y);
+                    this.updatePrev();
+                }
+
+                updatePrev() {
+                    this.prevPos.x = this.pos.x;
+                    this.prevPos.y = this.pos.y;
+                }
+
+                edges() {
+                    if (this.pos.x > sketch.width) this.pos.x = 0;
+                    if (this.pos.x < 0) this.pos.x = sketch.width;
+                    if (this.pos.y > sketch.height) this.pos.y = 0;
+                    if (this.pos.y < 0) this.pos.y = sketch.height;
+                    this.updatePrev();
+                }
+            }
+
+            window.startSimulation = function () {
+                paused = false;
+            }
+
+            window.pauseSimulation = function () {
+                paused = true;
+            }
+
+            window.resetSimulation = function () {
+                paused = true;
+                particles = [];
+                for (let i = 0; i < 5000; i++) {
+                    particles.push(new Particle());
+                }
+                temperature = 15;
+                windStrength = 5;
+                document.getElementById('temperatureSlider').value = temperature;
+                document.getElementById('windStrengthSlider').value = windStrength;
+                document.getElementById('temperatureValue').textContent = temperature;
+                document.getElementById('windStrengthValue').textContent = windStrength;
+                updateInfoPanel();
+                sketch.clear();
+            }
+
+            document.getElementById('temperatureSlider').addEventListener('input', function () {
+                temperature = parseFloat(this.value);
+                document.getElementById('temperatureValue').textContent = temperature;
+            });
+
+            document.getElementById('windStrengthSlider').addEventListener('input', function () {
+                windStrength = parseFloat(this.value);
+                document.getElementById('windStrengthValue').textContent = windStrength;
+            });
+        }
+    </script>
+</body>
+
+</html>

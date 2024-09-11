@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Realistic Ocean Current Simulation (Enhanced)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+        }
+
+        #mapContainer {
+            position: relative;
+            width: 1000px;
+            height: 600px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #map,
+        #currentCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 10;
+        }
+
+        button {
+            margin-right: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        #legend {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 10;
+        }
+
+        .current-label {
+            margin-bottom: 5px;
+        }
+
+        .current-color {
+            display: inline-block;
+            width: 20px;
+            height: 10px;
+            margin-right: 5px;
+        }
+
+        #popup {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+            z-index: 20;
+        }
+
+        #tourContainer {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 10;
+        }
+
+        #quizContainer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 5px;
+            z-index: 30;
+            display: none;
+        }
+
+        #infoPanel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 10;
+        }
+
+        #seasonSelector {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mapContainer">
+        <svg id="map" width="1000" height="600"></svg>
+        <div id="currentCanvas"></div>
+        <div id="controls">
+            <button onclick="startSimulation()">Start</button>
+            <button onclick="pauseSimulation()">Pause</button>
+            <button onclick="resetSimulation()">Reset</button>
+            <div>
+                <label for="temperatureSlider">Temperature: <span id="temperatureValue">15</span>°C</label>
+                <input type="range" id="temperatureSlider" min="0" max="30" value="15">
+            </div>
+            <div>
+                <label for="windStrengthSlider">Wind Strength: <span id="windStrengthValue">5</span></label>
+                <input type="range" id="windStrengthSlider" min="0" max="10" value="5">
+            </div>
+            <div>
+                <label for="salinitySlider">Salinity: <span id="salinityValue">35</span> ppt</label>
+                <input type="range" id="salinitySlider" min="30" max="40" value="35">
+            </div>
+            <div id="seasonSelector">
+                <label for="seasonSelect">Season:</label>
+                <select id="seasonSelect">
+                    <option value="spring">Spring</option>
+                    <option value="summer">Summer</option>
+                    <option value="autumn">Autumn</option>
+                    <option value="winter">Winter</option>
+                </select>
+            </div>
+        </div>
+        <div id="legend">
+            <h3>Major Ocean Currents</h3>
+            <div class="current-label"><span class="current-color" style="background-color: #FF0000;"></span>Gulf Stream
+            </div>
+            <div class="current-label"><span class="current-color" style="background-color: #00FF00;"></span>Kuroshio
+                Current</div>
+            <div class="current-label"><span class="current-color" style="background-color: #0000FF;"></span>Antarctic
+                Circumpolar Current</div>
+            <div class="current-label"><span class="current-color" style="background-color: #FFFF00;"></span>Equatorial
+                Currents</div>
+        </div>
+        <div id="popup"></div>
+        <div id="tourContainer">
+            <button onclick="startTour()">Start Guided Tour</button>
+        </div>
+        <div id="quizContainer">
+            <h3 id="quizQuestion"></h3>
+            <div id="quizOptions"></div>
+            <button onclick="checkAnswer()">Submit Answer</button>
+            <p id="quizFeedback"></p>
+        </div>
+        <div id="infoPanel">
+            <h3>Simulation Info</h3>
+            <p>Average Speed: <span id="currentSpeed">0</span> km/h</p>
+            <p>Particle Count: <span id="particleCount">500</span></p>
+            <p>Current Season: <span id="currentSeason">Spring</span></p>
+        </div>
+    </div>
+
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <script src="https://unpkg.com/topojson@3"></script>
+
+    <script>
+        const svg = d3.select("#map");
+        const projection = d3.geoMercator()
+            .scale(160)
+            .translate([500, 300]);
+        const path = d3.geoPath().projection(projection);
+        let land;
+        let sketchInstance;
+
+        d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json").then(function (world) {
+            land = topojson.feature(world, world.objects.land);
+            svg.append("path")
+                .datum(land)
+                .attr("d", path)
+                .attr("fill", "#d0d0d0")
+                .attr("stroke", "#a0a0a0")
+                .attr("stroke-width", 0.5);
+
+            new p5(oceanCurrentSketch);
+        });
+
+        function oceanCurrentSketch(sketch) {
+            let particles = [];
+            let flowField;
+            let paused = true;
+            let temperature = 15;
+            let windStrength = 5;
+            let salinity = 35;
+            let season = 'spring';
+            let scl = 40;
+            let cols, rows;
+            let zoff = 0;
+            let particleCount = 5000;
+            let landBuffer;
+
+            sketch.setup = function () {
+                let canvas = sketch.createCanvas(1000, 600);
+                canvas.parent('currentCanvas');
+                sketch.clear();
+                sketch.colorMode(sketch.HSB, 360, 100, 100, 255);
+
+                cols = sketch.floor(sketch.width / scl);
+                rows = sketch.floor(sketch.height / scl);
+                flowField = new Array(cols * rows);
+
+                sketch.mouseClicked = function () {
+                    let x = sketch.mouseX;
+                    let y = sketch.mouseY;
+                    let selectedColor = sketch.color(sketch.random(360), 100, 100);
+                    sketch.fill(selectedColor);
+                    sketch.ellipse(x, y, 10, 10);
+                };
+
+                initializeParticles();
+
+                d3.select("#temperatureSlider").on("input", function () {
+                    temperature = +this.value;
+                    d3.select("#temperatureValue").text(temperature);
+                });
+
+                d3.select("#windStrengthSlider").on("input", function () {
+                    windStrength = +this.value;
+                    d3.select("#windStrengthValue").text(windStrength);
+                });
+
+                d3.select("#salinitySlider").on("input", function () {
+                    salinity = +this.value;
+                    d3.select("#salinityValue").text(salinity);
+                });
+
+                d3.select("#seasonSelect").on("change", function () {
+                    season = this.value;
+                    d3.select("#currentSeason").text(season.charAt(0).toUpperCase() + season.slice(1));
+                });
+
+                d3.select("#infoPanel").style("display", "block");
+                d3.select("#quizContainer").style("display", "none");
+            }
+
+            function initializeParticles() {
+                particles = [];
+                for (let i = 0; i < particleCount; i++) {
+                    particles.push(new Particle(sketch.random(sketch.width), sketch.random(sketch.height)));
+                }
+            }
+
+            function Particle(x, y) {
+                this.pos = sketch.createVector(x, y);
+                this.prevPos = this.pos.copy();
+                this.color = sketch.color(sketch.random(360), 100, 100);
+                this.size = sketch.random(2, 5);
+                this.speed = sketch.random(1, 5);
+
+                this.update = function () {
+                    if (paused) return;
+                    let col = sketch.floor(this.pos.x / scl);
+                    let row = sketch.floor(this.pos.y / scl);
+                    let index = col + row * cols;
+                    let angle = flowField[index];
+                    let force = sketch.createVector(sketch.cos(angle), sketch.sin(angle));
+                    this.prevPos.set(this.pos);
+                    this.pos.add(force.mult(this.speed));
+                    if (this.pos.x > sketch.width) this.pos.x = 0;
+                    if (this.pos.x < 0) this.pos.x = sketch.width;
+                    if (this.pos.y > sketch.height) this.pos.y = 0;
+                    if (this.pos.y < 0) this.pos.y = sketch.height;
+                    sketch.stroke(this.color);
+                    sketch.strokeWeight(this.size);
+                    sketch.line(this.prevPos.x, this.prevPos.y, this.pos.x, this.pos.y);
+                }
+            }
+
+            sketch.draw = function () {
+                sketch.background(255);
+                sketch.loadPixels();
+                generateFlowField();
+                updateParticles();
+                updateInfoPanel();
+            }
+
+            function generateFlowField() {
+                let yoff = 0;
+                for (let y = 0; y < rows; y++) {
+                    let xoff = 0;
+                    for (let x = 0; x < cols; x++) {
+                        let angle = sketch.noise(xoff, yoff, zoff) * sketch.TWO_PI;
+                        flowField[x + y * cols] = angle;
+                        xoff += 0.1;
+                    }
+                    yoff += 0.1;
+                    zoff += 0.001;
+                }
+            }
+
+            function updateParticles() {
+                for (let i = 0; i < particles.length; i++) {
+                    particles[i].update();
+                }
+            }
+
+            function mean(array) {
+                if (array.length === 0) return 0;
+                let sum = array.reduce((acc, value) => acc + value, 0);
+                return sum / array.length;
+            }
+
+            function updateInfoPanel() {
+                const speeds = particles.map(p => p.speed);
+                document.getElementById('currentSpeed').textContent = sketch.round(mean(speeds), 2);
+                document.getElementById('particleCount').textContent = particleCount;
+            }
+
+            window.startSimulation = function () {
+                paused = false;
+            }
+
+            window.pauseSimulation = function () {
+                paused = true;
+            }
+
+            window.resetSimulation = function () {
+                paused = true;
+                initializeParticles();
+                document.getElementById('currentSpeed').textContent = '0';
+                document.getElementById('particleCount').textContent = particleCount;
+            }
+
+            window.startTour = function () {
+                alert('Guided tour feature is not yet implemented.');
+            }
+
+            window.checkAnswer = function () {
+                alert('Quiz feature is not yet implemented.');
+            }
+        }
+    </script>
+</body>
+
+</html>

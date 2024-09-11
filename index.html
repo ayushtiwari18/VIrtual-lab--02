@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ocean Simulations</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- CDN links for libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.0.0/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.5.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.17.1/matter.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+
+</head>
+
+<body>
+    <nav>
+        <ul id="nav-list">
+            <li><a href="#" data-sim="oceanAcidification">Ocean Acidification</a></li>
+            <li><a href="#" data-sim="waves">Wave Formation</a></li>
+            <li><a href="#" data-sim="currents">Ocean Currents</a></li>
+            <li><a href="#" data-sim="plasticPollution">Plastic Pollution</a></li>
+            <li><a href="#" data-sim="tsunami">Tsunami</a></li>
+            <li><a href="#" data-sim="ecosystem">Marine Ecosystem</a></li>
+            <li><a href="#" data-sim="oilspill">Oil Spill Cleanup</a></li>
+            <li><a href="#" data-sim="salinity">Salinity and Buoyancy</a></li>
+        </ul>
+    </nav>
+
+    <main id="simulation-container">
+        <!-- Simulations will be dynamically inserted here -->
+    </main>
+
+    <script src="main.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
+
+</body>
+
+</html>
